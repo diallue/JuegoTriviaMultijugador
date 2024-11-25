@@ -3,7 +3,7 @@ package Cliente;
 import java.io.*;
 import java.net.*;
 
-public class ClienteJuego {
+public class ClienteJuego import serializable {
     private Socket servidorSocket;
     private BufferedReader entrada;
     private PrintWriter salida;
@@ -48,4 +48,7 @@ public class ClienteJuego {
         ClienteJuego cliente = new ClienteJuego();
         cliente.conectarAlServidor("localhost", 12345);
     }
+}
+
+public void main() {
 }
