@@ -12,6 +12,9 @@ public class ServidorJuego {
     private int jugadoresEsperados;
     private Random random = new Random();
     private int bonusRespondidas = 0;
+    private int jugadoresConNombre = 0; // Contador para los jugadores que han ingresado su nombre
+    private Map<ManejadorCliente, Long> tiemposRespuestas = new HashMap<>();  // Guardar tiempos de respuesta
+    private Map<ManejadorCliente, Integer> respuestasRecibidas = new HashMap<>();  // Guardar respuestas
 
     public void iniciarServidor(int puerto) {
         try {
@@ -33,15 +36,12 @@ public class ServidorJuego {
         }
     }
 
-    private void manejarConexiones() {
-        // Crear un nuevo hilo para cada cliente que se conecta
+    public void manejarConexiones() {
         for (int i = 0; i < jugadoresEsperados; i++) {
             new Thread(() -> {
                 try {
-                    Socket clienteSocket = serverSocket.accept(); // Espera a un cliente
+                    Socket clienteSocket = serverSocket.accept();
                     ManejadorCliente cliente = new ManejadorCliente(clienteSocket, this);
-
-                    // Asegurarse de que se pueda agregar sin interferir en el registro de otros jugadores
                     synchronized (this) {
                         clientes.add(cliente);
                         cliente.start();
@@ -53,16 +53,19 @@ public class ServidorJuego {
             }).start();
         }
 
-        // Asegurarse de que todos los jugadores se conecten antes de iniciar el juego
-        while (clientes.size() < jugadoresEsperados) {
-            try {
-                Thread.sleep(500); // Espera hasta que todos los jugadores se conecten
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        // Esperar hasta que todos los jugadores estén conectados y hayan ingresado su nombre
+        synchronized (this) {
+            while (clientes.size() < jugadoresEsperados || jugadoresConNombre < jugadoresEsperados) {
+                try {
+                    wait(); // Espera hasta que todos los jugadores hayan ingresado su nombre
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         }
-        System.out.println("Todos los jugadores están conectados. Iniciando el juego...");
-        iniciarRonda(); // Una vez que todos los jugadores están listos, iniciar el juego
+
+        System.out.println("Todos los jugadores están conectados y han ingresado su nombre. Iniciando el juego...");
+        iniciarRonda(); // Mover esta línea aquí para que inicie después de la inscripción de todos
     }
 
     private void cargarPreguntas() {
@@ -79,14 +82,7 @@ public class ServidorJuego {
             Pregunta pregunta = preguntas.get(random.nextInt(preguntas.size()));
             int puntos = esBonus ? 20 : 10;
 
-            // Indicar en el servidor si es una ronda de bonus
-            if (esBonus) {
-                System.out.println("\n*** PREGUNTA BONUS: Esta pregunta vale 20 puntos ***");
-            }
-
-            System.out.println("Enviando pregunta a los jugadores (Bonus: " + esBonus + ")");
-
-            // Enviar mensaje especial a los clientes si es una pregunta de bonus
+            // Enviar pregunta a los clientes
             clientes.forEach(cliente -> {
                 if (esBonus) {
                     cliente.enviarMensaje("*** PREGUNTA BONUS: Esta pregunta vale 20 puntos ***");
@@ -94,13 +90,13 @@ public class ServidorJuego {
                 cliente.enviarPregunta(pregunta);
             });
 
+            // Esperar respuestas de los jugadores antes de continuar
             esperarRespuestas(pregunta, puntos, esBonus);
 
             rondaActual++;
         }
 
         if (bonusRespondidas >= 5) {
-            // Finalizar juego
             clientes.forEach(cliente -> cliente.enviarMensaje("El juego ha terminado. ¡Has respondido correctamente 5 preguntas bonus!"));
             System.out.println("El juego ha terminado. ¡5 preguntas bonus respondidas correctamente!");
         }
@@ -109,34 +105,70 @@ public class ServidorJuego {
         cerrarConexiones();
     }
 
-    // Método para esperar respuestas de los jugadores
     private void esperarRespuestas(Pregunta pregunta, int puntos, boolean esBonus) {
-        // Lógica para esperar las respuestas de los jugadores
-        // Al recibir la respuesta, procesar y verificar si es correcta
-        clientes.forEach(cliente -> {
-            if (esBonus) {
-                cliente.enviarMensaje("*** PREGUNTA BONUS: Esta pregunta vale 20 puntos ***");
-            }
-            cliente.enviarPregunta(pregunta);
-        });
-    }
+        synchronized (this) {
+            // Esperamos a que todos los jugadores respondan antes de procesar
+            int respuestasEsperadas = clientes.size();
+            int respuestasRecibidasCount = 0;
 
-    public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion, boolean esBonus) {
-        Pregunta pregunta = preguntas.get(random.nextInt(preguntas.size()));
-
-        // Verificar si la respuesta es correcta
-        if (opcion == pregunta.getRespuestaCorrecta()) {
-            cliente.getJugador().sumarPuntos(esBonus ? 20 : 10);
-            cliente.enviarMensaje("Respuesta correcta! Has ganado " + (esBonus ? 20 : 10) + " puntos.");
-            if (esBonus) {
-                bonusRespondidas++;
+            while (respuestasRecibidasCount < respuestasEsperadas) {
+                try {
+                    Thread.sleep(100); // Esperar un poco antes de verificar las respuestas
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
-        } else {
-            cliente.enviarMensaje("Respuesta incorrecta.");
+
+            // Procesar todas las respuestas una vez que todos hayan respondido
+            ManejadorCliente ganador = null;
+            long mejorTiempo = Long.MAX_VALUE;
+
+            for (ManejadorCliente cliente : clientes) {
+                int opcion = respuestasRecibidas.get(cliente);
+                if (opcion == pregunta.getRespuestaCorrecta()) {
+                    cliente.getJugador().sumarPuntos(esBonus ? 20 : 10);
+                    cliente.enviarMensaje("¡Respuesta correcta! Has ganado " + (esBonus ? 20 : 10) + " puntos.");
+                    if (esBonus) {
+                        bonusRespondidas++;
+                    }
+                    if (ganador == null) {
+                        ganador = cliente;
+                        mejorTiempo = tiemposRespuestas.get(cliente);
+                    }
+                } else {
+                    cliente.enviarMensaje("Respuesta incorrecta.");
+                }
+            }
+
+            if (ganador != null) {
+                ganador.getJugador().sumarPuntos(puntos); // El ganador obtiene puntos
+                ganador.enviarMensaje("¡Has respondido primero! Ganaste " + puntos + " puntos.");
+            }
+
+            // Limpiar los mapas para la siguiente ronda
+            respuestasRecibidas.clear();
+            tiemposRespuestas.clear();
         }
     }
 
-    // Método para cerrar las conexiones con los clientes
+    public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion, boolean esBonus) {
+        // Guardamos la respuesta y el tiempo en que fue dada
+        respuestasRecibidas.put(cliente, opcion);
+        tiemposRespuestas.put(cliente, System.currentTimeMillis());
+
+        // Verificar si todos los jugadores han respondido
+        if (respuestasRecibidas.size() == clientes.size()) {
+            notifyAll();  // Notificar que todas las respuestas han sido recibidas
+        }
+    }
+
+    public synchronized void nombreIngresado() {
+        jugadoresConNombre++;
+        if (jugadoresConNombre == jugadoresEsperados) {
+            notifyAll(); // Notificar que todos los jugadores han ingresado su nombre
+        }
+    }
+
     private void cerrarConexiones() {
         clientes.forEach(cliente -> cliente.cerrarConexion());
         try {
@@ -144,13 +176,6 @@ public class ServidorJuego {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    private void finalizarJuego() {
-        System.out.println("El juego ha terminado. Resultados finales:");
-        clientes.forEach(cliente -> {
-            System.out.println(cliente.getJugador().getNombre() + ": " + cliente.getJugador().getPuntuacion() + " puntos.");
-        });
     }
 
     public static void main(String[] args) {

@@ -5,7 +5,7 @@ import java.util.List;
 public class Pregunta {
     private String enunciado;
     private List<String> opciones;
-    private int respuestaCorrecta;
+    private int respuestaCorrecta; // Índice de la respuesta correcta
 
     public Pregunta(String enunciado, List<String> opciones, int respuestaCorrecta) {
         this.enunciado = enunciado;
@@ -21,8 +21,12 @@ public class Pregunta {
         return opciones;
     }
 
-    public boolean validarRespuesta(int respuesta) {
-        return respuesta == respuestaCorrecta;
+    public int getRespuestaCorrecta() {
+        return respuestaCorrecta;
+    }
+
+    // Método para sumar puntos al jugador si la respuesta es correcta
+    public boolean esRespuestaCorrecta(int opcionElegida) {
+        return opcionElegida == respuestaCorrecta;
     }
 }
-

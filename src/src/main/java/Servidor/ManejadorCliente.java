@@ -9,6 +9,7 @@ public class ManejadorCliente extends Thread {
     private Jugador jugador;
     private BufferedReader entrada;
     private PrintWriter salida;
+    private int respuesta;  // Campo para almacenar la respuesta seleccionada por el jugador
 
     public ManejadorCliente(Socket socket, ServidorJuego servidor) {
         this.clienteSocket = socket;
@@ -36,6 +37,11 @@ public class ManejadorCliente extends Thread {
         }
     }
 
+    // Método para obtener la respuesta seleccionada por el jugador
+    public int getRespuesta() {
+        return respuesta;
+    }
+
     @Override
     public void run() {
         try {
@@ -53,20 +59,27 @@ public class ManejadorCliente extends Thread {
 
             jugador = new Jugador(nombre);
 
+            // Notificar al servidor que este jugador ha ingresado su nombre
+            servidor.nombreIngresado();
+
             // Una vez que el jugador ha sido registrado, se siguen las rondas del juego
             while (true) {
-                String respuesta = entrada.readLine(); // Leer las respuestas
-                if (respuesta == null || respuesta.trim().isEmpty()) {
+                // Leer y enviar las respuestas a cada ronda
+                String respuestaStr = entrada.readLine(); // Leer la respuesta
+                if (respuestaStr == null || respuestaStr.trim().isEmpty()) {
                     continue; // Si no hay respuesta, continuar esperando
                 }
-                int opcion = Integer.parseInt(respuesta);
-                servidor.procesarRespuesta(this, opcion, false); // Aquí puedes indicar si es una pregunta bonus
+                respuesta = Integer.parseInt(respuestaStr); // Almacenar la respuesta seleccionada
+
+                // Procesar la respuesta en el servidor y notificar a todos los jugadores
+                servidor.procesarRespuesta(this, respuesta);  // Procesa la respuesta de inmediato
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    // Método para cerrar la conexión del cliente
     public void cerrarConexion() {
         try {
             entrada.close();
