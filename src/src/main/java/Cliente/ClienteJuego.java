@@ -3,41 +3,51 @@ package Cliente;
 import java.io.*;
 import java.net.*;
 
-public class ClienteJuego import serializable {
-    private Socket servidorSocket;
+public class ClienteJuego {
+    private Socket socket;
     private BufferedReader entrada;
     private PrintWriter salida;
 
     public void conectarAlServidor(String host, int puerto) {
         try {
-            servidorSocket = new Socket(host, puerto);
-            entrada = new BufferedReader(new InputStreamReader(servidorSocket.getInputStream()));
-            salida = new PrintWriter(servidorSocket.getOutputStream(), true);
+            socket = new Socket(host, puerto);
+            entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            salida = new PrintWriter(socket.getOutputStream(), true);
 
-            new Thread(() -> escucharServidor()).start();
-            manejarEntradaUsuario();
+            // Escucha de mensajes del servidor
+            new Thread(() -> {
+                try {
+                    String mensaje;
+                    while ((mensaje = entrada.readLine()) != null) {
+                        if (mensaje.contains("El juego ha terminado")) {
+                            System.out.println(mensaje);  // Mensaje del servidor indicando fin del juego
+                            break;  // Termina el juego
+                        } else if (mensaje.startsWith("*** PREGUNTA BONUS")) {
+                            System.out.println("\n" + mensaje + "\n"); // Mensaje especial para pregunta bonus
+                        } else if (mensaje.startsWith("PREGUNTA:")) {
+                            System.out.println(mensaje);
+                        } else {
+                            System.out.println(mensaje);
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+
+            // Enviar mensajes al servidor
+            enviarMensajes();
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void escucharServidor() {
-        try {
-            String mensaje;
-            while ((mensaje = entrada.readLine()) != null) {
-                System.out.println(mensaje);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void manejarEntradaUsuario() {
+    private void enviarMensajes() {
         try (BufferedReader teclado = new BufferedReader(new InputStreamReader(System.in))) {
-            String linea;
-            while ((linea = teclado.readLine()) != null) {
-                salida.println(linea);
+            String mensaje;
+            while ((mensaje = teclado.readLine()) != null) {
+                salida.println(mensaje);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -48,7 +58,4 @@ public class ClienteJuego import serializable {
         ClienteJuego cliente = new ClienteJuego();
         cliente.conectarAlServidor("localhost", 12345);
     }
-}
-
-public void main() {
 }
