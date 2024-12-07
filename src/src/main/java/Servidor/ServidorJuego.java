@@ -8,7 +8,7 @@ public class ServidorJuego {
     private ServerSocket serverSocket;
     private final List<ManejadorCliente> clientes = new ArrayList<>();
     private final List<Pregunta> preguntas = new ArrayList<>();
-    private Map<ManejadorCliente, Integer> contadorBonus = new HashMap<>();
+    private Map<ManejadorCliente, Integer> preguntasBonusCorrectas = new HashMap<>();
     private int rondaActual = 0;
     private int jugadoresEsperados;
     private Map<ManejadorCliente, Integer> fallosPorJugador = new HashMap<>();
@@ -134,7 +134,6 @@ public class ServidorJuego {
     }
 
     public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion) {
-        // Si el jugador ya no puede responder en esta ronda, ignorar
         if (fallosPorJugador.containsKey(cliente) && fallosPorJugador.get(cliente) >= 1) {
             cliente.enviarMensaje("Ya fallaste esta ronda y no puedes responder nuevamente.");
             return;
@@ -142,27 +141,32 @@ public class ServidorJuego {
 
         Pregunta preguntaActual = preguntas.get(rondaActual);
         boolean respuestaCorrecta = preguntaActual.esRespuestaCorrecta(opcion);
+        boolean esPreguntaBonus = (rondaActual % 6 == 5); // Suponiendo que las preguntas bonus son cada sexta
 
         if (respuestaCorrecta) {
-            // El jugador acierta
             jugadoresQueRespondieron.add(cliente);
 
-            // Notificar a todos del acierto
             String mensaje = "¡" + cliente.getJugador().getNombre() + " ha acertado!";
             notificarATodos(mensaje);
-
-            // Sumar puntos al jugador
             cliente.getJugador().sumarPuntos(10);
 
-            // Avanzar a la siguiente pregunta
+            if (esPreguntaBonus) {
+                int aciertosBonus = preguntasBonusCorrectas.getOrDefault(cliente, 0) + 1;
+                preguntasBonusCorrectas.put(cliente, aciertosBonus);
+
+                if (aciertosBonus >= 5) {
+                    notificarATodos("¡" + cliente.getJugador().getNombre() + " ha ganado el juego al responder 5 preguntas bonus correctamente!");
+                    finalizarJuego();
+                    return;
+                }
+            }
+
             rondaActual++;
             iniciarRonda();
         } else {
-            // Registrar el fallo del jugador
             fallosPorJugador.put(cliente, fallosPorJugador.getOrDefault(cliente, 0) + 1);
             cliente.enviarMensaje("¡Respuesta incorrecta! Ya no puedes responder en esta ronda.");
 
-            // Verificar si todos los jugadores han fallado
             if (fallosPorJugador.size() == clientes.size()) {
                 notificarATodos("¡Todos los jugadores han fallado! Avanzando a la siguiente pregunta...");
                 rondaActual++;
