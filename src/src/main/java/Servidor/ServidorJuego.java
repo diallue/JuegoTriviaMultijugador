@@ -11,6 +11,8 @@ public class ServidorJuego {
     private Map<ManejadorCliente, Integer> contadorBonus = new HashMap<>();
     private int rondaActual = 0;
     private int jugadoresEsperados;
+    private Map<ManejadorCliente, Integer> fallosPorJugador = new HashMap<>();
+    private Set<ManejadorCliente> jugadoresQueRespondieron = new HashSet<>();
 
     public void iniciarServidor(int puerto) {
         try {
@@ -113,65 +115,59 @@ public class ServidorJuego {
     }
 
     public synchronized void iniciarRonda() {
-        // Si hemos llegado al final de la lista de preguntas, termina el juego.
+        jugadoresQueRespondieron.clear();
+        fallosPorJugador.clear();
+
         if (rondaActual < preguntas.size()) {
             Pregunta pregunta = preguntas.get(rondaActual);
-            boolean esPreguntaBonus = (rondaActual % 6 == 5);  // Cada sexta pregunta es bonus
 
-            // Notificar la nueva pregunta
             notificarATodos("Nueva pregunta:");
             notificarATodos("PREGUNTA: " + pregunta.getEnunciado());
 
-            // Enviar las opciones de respuesta
+            // Mostrar opciones
             for (int i = 0; i < pregunta.getOpciones().size(); i++) {
                 notificarATodos((i + 1) + ". " + pregunta.getOpciones().get(i));
             }
-
-            // Si es una pregunta bonus, se notifica.
-            if (esPreguntaBonus) {
-                notificarATodos("¡Esta es una pregunta bonus!");
-            }
         } else {
-            // Si no hay más preguntas, finaliza el juego.
             finalizarJuego();
         }
     }
 
     public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion) {
+        // Si el jugador ya no puede responder en esta ronda, ignorar
+        if (fallosPorJugador.containsKey(cliente) && fallosPorJugador.get(cliente) >= 1) {
+            cliente.enviarMensaje("Ya fallaste esta ronda y no puedes responder nuevamente.");
+            return;
+        }
+
         Pregunta preguntaActual = preguntas.get(rondaActual);
-        boolean esPreguntaBonus = (rondaActual % 6 == 5);  // Verificar si es una pregunta bonus
         boolean respuestaCorrecta = preguntaActual.esRespuestaCorrecta(opcion);
 
-        // Verificar si la respuesta es correcta
         if (respuestaCorrecta) {
-            // Mensaje para notificar que el jugador acertó
+            // El jugador acierta
+            jugadoresQueRespondieron.add(cliente);
+
+            // Notificar a todos del acierto
             String mensaje = "¡" + cliente.getJugador().getNombre() + " ha acertado!";
-            notificarATodos(mensaje);  // Notificar a todos los jugadores que alguien ha acertado
+            notificarATodos(mensaje);
 
-            // Si es una pregunta bonus, incrementar los puntos extra
-            if (esPreguntaBonus) {
-                cliente.getJugador().sumarPuntos(20);  // Puntos extra por respuesta correcta en una pregunta bonus
-                contadorBonus.put(cliente, contadorBonus.getOrDefault(cliente, 0) + 1);
+            // Sumar puntos al jugador
+            cliente.getJugador().sumarPuntos(10);
 
-                // Si el jugador ha respondido 5 preguntas bonus correctamente
-                if (contadorBonus.get(cliente) >= 5) {
-                    notificarATodos(cliente.getJugador().getNombre() + " ha respondido 5 preguntas bonus correctamente y ha ganado el juego.");
-                    finalizarJuego();  // Termina el juego cuando un jugador responde 5 preguntas bonus correctamente
-                    return;  // Detener el procesamiento
-                }
-            } else {
-                // Puntos normales por una respuesta correcta en una pregunta regular
-                cliente.getJugador().sumarPuntos(10);
-            }
-
-            // Incrementar la ronda actual
+            // Avanzar a la siguiente pregunta
             rondaActual++;
-
-            // Enviar la siguiente pregunta a todos los jugadores
             iniciarRonda();
         } else {
-            // Si la respuesta es incorrecta, solo al jugador que ha fallado
-            cliente.enviarMensaje("¡Respuesta incorrecta! Sigue intentando.");
+            // Registrar el fallo del jugador
+            fallosPorJugador.put(cliente, fallosPorJugador.getOrDefault(cliente, 0) + 1);
+            cliente.enviarMensaje("¡Respuesta incorrecta! Ya no puedes responder en esta ronda.");
+
+            // Verificar si todos los jugadores han fallado
+            if (fallosPorJugador.size() == clientes.size()) {
+                notificarATodos("¡Todos los jugadores han fallado! Avanzando a la siguiente pregunta...");
+                rondaActual++;
+                iniciarRonda();
+            }
         }
     }
 
@@ -200,6 +196,14 @@ public class ServidorJuego {
             cliente.enviarMensaje(mensaje);
         }
     }
+
+    public synchronized void removerCliente(ManejadorCliente cliente) {
+        if (clientes.remove(cliente)) {
+            String nombre = cliente.getJugador() != null ? cliente.getJugador().getNombre() : "un jugador desconocido";
+            notificarATodos("¡" + nombre + " se ha desconectado del juego!");
+        }
+    }
+
 
     public static void main(String[] args) {
         ServidorJuego servidor = new ServidorJuego();

@@ -43,18 +43,28 @@ public class ManejadorCliente extends Thread {
 
             servidor.notificarATodos("¡" + nombre + " se ha unido al juego!");
 
+            // Escuchar respuestas del cliente
             while (true) {
                 String respuestaStr = entrada.readLine();
-                if (respuestaStr == null || respuestaStr.trim().isEmpty()) continue;
 
-                int opcion = Integer.parseInt(respuestaStr);
-                servidor.procesarRespuesta(this, opcion);
+                // Validación de entrada
+                if (respuestaStr == null || respuestaStr.trim().isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    int opcion = Integer.parseInt(respuestaStr.trim());
+                    servidor.procesarRespuesta(this, opcion);
+                } catch (NumberFormatException e) {
+                    enviarMensaje("Por favor, introduce una opción válida (1, 2 o 3).");
+                }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            // Manejar la desconexión del cliente
+            System.out.println("El cliente " + (jugador != null ? jugador.getNombre() : "desconocido") + " se ha desconectado.");
+            servidor.removerCliente(this); // Remover cliente del servidor
         }
     }
-
 
     public void cerrarConexion() {
         try {
@@ -65,4 +75,5 @@ public class ManejadorCliente extends Thread {
             e.printStackTrace();
         }
     }
+
 }
