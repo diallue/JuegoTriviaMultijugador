@@ -27,6 +27,6 @@ public class Pregunta implements Serializable {
     }
 
     public boolean esRespuestaCorrecta(int opcionElegida) {
-        return opcionElegida == respuestaCorrecta;
+        return respuestaCorrecta == opcionElegida;
     }
 }

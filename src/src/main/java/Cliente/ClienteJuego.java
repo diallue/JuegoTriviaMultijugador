@@ -49,15 +49,13 @@ public class ClienteJuego {
             while (true) {
                 String pregunta = entrada.readLine();  // Recibe la pregunta del servidor
                 System.out.println(pregunta);
-                long tiempoInicio = System.currentTimeMillis();
 
                 // Esperar respuesta del jugador
                 String respuesta = teclado.readLine();
-                long tiempoFin = System.currentTimeMillis();
 
                 // Enviar respuesta al servidor
                 salida.println(respuesta);
-                salida.println(tiempoFin - tiempoInicio);
+                salida.flush();
             }
         } catch (IOException e) {
             e.printStackTrace();

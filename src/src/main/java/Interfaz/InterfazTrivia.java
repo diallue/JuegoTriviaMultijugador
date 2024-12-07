@@ -5,6 +5,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.Map;
 
 public class InterfazTrivia extends JFrame {
     private JLabel preguntaLabel;
@@ -89,6 +90,9 @@ public class InterfazTrivia extends JFrame {
         public void actionPerformed(ActionEvent e) {
             System.out.println("Respuesta seleccionada: Opción " + opcion);
             // Aquí puedes enviar la respuesta al servidor
+            // Por ejemplo:
+            // Enviar la respuesta al servidor para que sea procesada
+            // EnviarRespuestaAlServidor(opcion);
         }
     }
 
@@ -107,5 +111,18 @@ public class InterfazTrivia extends JFrame {
 
         // Hacer visible la ventana
         trivia.setVisible(true);
+    }
+
+    // Método para actualizar la puntuación cuando se recibe del servidor
+    public void actualizarPuntuacionesEnTiempoReal(Map<String, Integer> puntuaciones) {
+        // Convertir el mapa de puntuaciones en una matriz de filas para la tabla
+        String[][] data = new String[puntuaciones.size()][2];
+        int i = 0;
+        for (Map.Entry<String, Integer> entry : puntuaciones.entrySet()) {
+            data[i][0] = entry.getKey();
+            data[i][1] = entry.getValue().toString();
+            i++;
+        }
+        actualizarPuntuaciones(data);
     }
 }
