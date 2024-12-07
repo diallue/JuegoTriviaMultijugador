@@ -3,16 +3,20 @@ package Servidor;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ServidorJuego {
     private ServerSocket serverSocket;
     private final List<ManejadorCliente> clientes = new ArrayList<>();
     private final List<Pregunta> preguntas = new ArrayList<>();
-    private Map<ManejadorCliente, Integer> preguntasBonusCorrectas = new HashMap<>();
+    private Map<ManejadorCliente, Integer> contadorBonus = new HashMap<>();
     private int rondaActual = 0;
     private int jugadoresEsperados;
+    private ExecutorService poolDeHilos;
     private Map<ManejadorCliente, Integer> fallosPorJugador = new HashMap<>();
     private Set<ManejadorCliente> jugadoresQueRespondieron = new HashSet<>();
+    private Map<ManejadorCliente, Integer> preguntasBonusCorrectas = new HashMap<>();
 
     public void iniciarServidor(int puerto) {
         try {
@@ -20,9 +24,16 @@ public class ServidorJuego {
             cargarPreguntasDesdeArchivo();
             System.out.println("Servidor iniciado en el puerto " + puerto);
             configurarJuego();
+
+            poolDeHilos = Executors.newFixedThreadPool(jugadoresEsperados);
+
             manejarConexiones();
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            if (poolDeHilos != null) {
+                poolDeHilos.shutdown();
+            }
         }
     }
 
@@ -39,42 +50,28 @@ public class ServidorJuego {
             String enunciado;
             while ((enunciado = reader.readLine()) != null && !enunciado.trim().isEmpty()) {
                 List<String> opciones = new ArrayList<>();
-                // Leemos las 3 opciones
                 for (int i = 0; i < 3; i++) {
                     String opcion = reader.readLine().trim();
                     if (opcion != null && !opcion.isEmpty()) {
                         opciones.add(opcion);
-                    } else {
-                        System.out.println("Error en el formato de la opción. Faltan opciones para la pregunta: " + enunciado);
-                        break;
                     }
                 }
-
-                // Leemos la respuesta correcta
                 String respuestaCorrectaStr = reader.readLine().trim();
                 if (respuestaCorrectaStr != null && !respuestaCorrectaStr.isEmpty()) {
                     try {
                         int respuestaCorrecta = Integer.parseInt(respuestaCorrectaStr);
                         if (respuestaCorrecta >= 1 && respuestaCorrecta <= 3) {
                             preguntas.add(new Pregunta(enunciado, opciones, respuestaCorrecta));
-                        } else {
-                            System.out.println("Respuesta correcta fuera de rango (1-3) para la pregunta: " + enunciado);
                         }
                     } catch (NumberFormatException e) {
                         System.out.println("Error al parsear la respuesta correcta: " + respuestaCorrectaStr);
                     }
-                } else {
-                    System.out.println("Respuesta correcta no encontrada para la pregunta: " + enunciado);
                 }
             }
-
-            System.out.println("Total de preguntas cargadas: " + preguntas.size());  // Verificación de las preguntas cargadas
-
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-
 
     private void manejarConexiones() {
         while (clientes.size() < jugadoresEsperados) {
@@ -83,9 +80,8 @@ public class ServidorJuego {
                 ManejadorCliente cliente = new ManejadorCliente(clienteSocket, this);
                 synchronized (this) {
                     clientes.add(cliente);
-                    cliente.start();
-                    System.out.println("Cliente conectado: " + clienteSocket.getInetAddress() +
-                            ". Total: " + clientes.size() + "/" + jugadoresEsperados);
+                    poolDeHilos.execute(cliente);
+                    System.out.println("Cliente conectado: " + clienteSocket.getInetAddress() + " Total: " + clientes.size() + "/" + jugadoresEsperados);
                     cliente.enviarMensaje("¡Bienvenido! Esperando a los demás jugadores...");
                 }
             } catch (IOException e) {
@@ -93,20 +89,17 @@ public class ServidorJuego {
             }
         }
 
-        // Ahora que todos los jugadores se han conectado, esperamos a que todos ingresen su nombre
         esperarNombres();
-
         System.out.println("Todos los jugadores están conectados. Iniciando el juego...");
         notificarATodos("¡Todos los jugadores están conectados! Preparando la primera pregunta...");
         iniciarRonda();
     }
 
     private synchronized void esperarNombres() {
-        // Asegurarse de que el jugador ha ingresado su nombre
         for (ManejadorCliente cliente : clientes) {
             while (cliente.getJugador() == null || cliente.getJugador().getNombre() == null || cliente.getJugador().getNombre().isEmpty()) {
                 try {
-                    wait();  // Esperamos hasta que el jugador ingrese su nombre
+                    wait();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -121,10 +114,14 @@ public class ServidorJuego {
         if (rondaActual < preguntas.size()) {
             Pregunta pregunta = preguntas.get(rondaActual);
 
+            boolean esPreguntaBonus = ((rondaActual + 1) % 6 == 0);
+            if (esPreguntaBonus) {
+                notificarATodos("¡Esta es una pregunta BONUS! Los puntos valen doble.");
+            }
+
             notificarATodos("Nueva pregunta:");
             notificarATodos("PREGUNTA: " + pregunta.getEnunciado());
 
-            // Mostrar opciones
             for (int i = 0; i < pregunta.getOpciones().size(); i++) {
                 notificarATodos((i + 1) + ". " + pregunta.getOpciones().get(i));
             }
@@ -134,6 +131,7 @@ public class ServidorJuego {
     }
 
     public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion) {
+        // Verificar si el jugador ya falló y no puede responder nuevamente
         if (fallosPorJugador.containsKey(cliente) && fallosPorJugador.get(cliente) >= 1) {
             cliente.enviarMensaje("Ya fallaste esta ronda y no puedes responder nuevamente.");
             return;
@@ -144,16 +142,22 @@ public class ServidorJuego {
         boolean esPreguntaBonus = (rondaActual % 6 == 5); // Suponiendo que las preguntas bonus son cada sexta
 
         if (respuestaCorrecta) {
+            // Si el jugador acertó
             jugadoresQueRespondieron.add(cliente);
-
             String mensaje = "¡" + cliente.getJugador().getNombre() + " ha acertado!";
             notificarATodos(mensaje);
-            cliente.getJugador().sumarPuntos(10);
+
+            cliente.getJugador().sumarPuntos(10); // Puntos por respuesta correcta
 
             if (esPreguntaBonus) {
+                // Si es una pregunta bonus
                 int aciertosBonus = preguntasBonusCorrectas.getOrDefault(cliente, 0) + 1;
                 preguntasBonusCorrectas.put(cliente, aciertosBonus);
 
+                // Enviar mensaje indicando cuántas preguntas bonus ha acertado
+                cliente.enviarMensaje("¡Has acertado una pregunta bonus! Llevas " + aciertosBonus + " respuestas bonus correctas.");
+
+                // Si el jugador alcanza 5 aciertos bonus
                 if (aciertosBonus >= 5) {
                     notificarATodos("¡" + cliente.getJugador().getNombre() + " ha ganado el juego al responder 5 preguntas bonus correctamente!");
                     finalizarJuego();
@@ -161,19 +165,31 @@ public class ServidorJuego {
                 }
             }
 
+            // Avanzar a la siguiente ronda
             rondaActual++;
-            iniciarRonda();
+            if (rondaActual < preguntas.size()) {
+                iniciarRonda(); // Iniciar la siguiente pregunta
+            } else {
+                finalizarJuego(); // Si ya no hay más preguntas, finalizar el juego
+            }
         } else {
+            // Si el jugador falló
             fallosPorJugador.put(cliente, fallosPorJugador.getOrDefault(cliente, 0) + 1);
             cliente.enviarMensaje("¡Respuesta incorrecta! Ya no puedes responder en esta ronda.");
 
+            // Si todos los jugadores han fallado
             if (fallosPorJugador.size() == clientes.size()) {
                 notificarATodos("¡Todos los jugadores han fallado! Avanzando a la siguiente pregunta...");
-                rondaActual++;
-                iniciarRonda();
+                rondaActual++; // Avanzar a la siguiente ronda
+                if (rondaActual < preguntas.size()) {
+                    iniciarRonda(); // Iniciar la siguiente pregunta
+                } else {
+                    finalizarJuego(); // Si ya no hay más preguntas, finalizar el juego
+                }
             }
         }
     }
+
 
     private void finalizarJuego() {
         notificarATodos("El juego ha terminado. Gracias por participar.");
@@ -207,7 +223,6 @@ public class ServidorJuego {
             notificarATodos("¡" + nombre + " se ha desconectado del juego!");
         }
     }
-
 
     public static void main(String[] args) {
         ServidorJuego servidor = new ServidorJuego();
