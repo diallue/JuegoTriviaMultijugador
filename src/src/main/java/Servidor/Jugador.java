@@ -17,7 +17,6 @@ public class Jugador {
         return puntos;
     }
 
-    // Método para sumar puntos al jugador
     public void sumarPuntos(int puntosASumar) {
         this.puntos += puntosASumar;
     }

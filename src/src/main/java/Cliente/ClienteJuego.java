@@ -31,7 +31,6 @@ public class ClienteJuego {
             }).start();
 
             // Enviar nombre al servidor
-            System.out.println("Escribe tu nombre:");
             BufferedReader teclado = new BufferedReader(new InputStreamReader(System.in));
             String nombre = teclado.readLine();
             salida.println(nombre);
@@ -67,6 +66,6 @@ public class ClienteJuego {
 
     public static void main(String[] args) {
         ClienteJuego cliente = new ClienteJuego();
-        cliente.conectarAlServidor("localhost", 12345); // Conectar al servidor
+        cliente.conectarAlServidor("localhost", 55555); // Conectar al servidor
     }
 }

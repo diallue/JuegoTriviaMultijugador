@@ -1,11 +1,12 @@
 package Servidor;
 
+import java.io.Serializable;
 import java.util.List;
 
-public class Pregunta {
+public class Pregunta implements Serializable {
     private String enunciado;
     private List<String> opciones;
-    private int respuestaCorrecta; // Índice de la respuesta correcta
+    private int respuestaCorrecta;
 
     public Pregunta(String enunciado, List<String> opciones, int respuestaCorrecta) {
         this.enunciado = enunciado;
@@ -25,7 +26,6 @@ public class Pregunta {
         return respuestaCorrecta;
     }
 
-    // Método para sumar puntos al jugador si la respuesta es correcta
     public boolean esRespuestaCorrecta(int opcionElegida) {
         return opcionElegida == respuestaCorrecta;
     }

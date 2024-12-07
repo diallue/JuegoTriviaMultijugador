@@ -6,20 +6,16 @@ import java.util.*;
 
 public class ServidorJuego {
     private ServerSocket serverSocket;
-    private List<ManejadorCliente> clientes = new ArrayList<>();
-    private List<Pregunta> preguntas = new ArrayList<>();
+    private final List<ManejadorCliente> clientes = new ArrayList<>();
+    private final List<Pregunta> preguntas = new ArrayList<>();
+    private Map<ManejadorCliente, Integer> contadorBonus = new HashMap<>();
     private int rondaActual = 0;
     private int jugadoresEsperados;
-    private Random random = new Random();
-    private int bonusRespondidas = 0;
-    private int jugadoresConNombre = 0; // Contador para los jugadores que han ingresado su nombre
-    private Map<ManejadorCliente, Long> tiemposRespuestas = new HashMap<>();  // Guardar tiempos de respuesta
-    private Map<ManejadorCliente, Integer> respuestasRecibidas = new HashMap<>();  // Guardar respuestas
 
     public void iniciarServidor(int puerto) {
         try {
             serverSocket = new ServerSocket(puerto);
-            cargarPreguntas();
+            cargarPreguntasDesdeArchivo();
             System.out.println("Servidor iniciado en el puerto " + puerto);
             configurarJuego();
             manejarConexiones();
@@ -36,141 +32,162 @@ public class ServidorJuego {
         }
     }
 
-    public void manejarConexiones() {
-        for (int i = 0; i < jugadoresEsperados; i++) {
-            new Thread(() -> {
-                try {
-                    Socket clienteSocket = serverSocket.accept();
-                    ManejadorCliente cliente = new ManejadorCliente(clienteSocket, this);
-                    synchronized (this) {
-                        clientes.add(cliente);
-                        cliente.start();
-                        System.out.println("Cliente conectado. Total: " + clientes.size() + "/" + jugadoresEsperados);
+    private void cargarPreguntasDesdeArchivo() {
+        try (BufferedReader reader = new BufferedReader(new FileReader("C:\\Users\\Public\\Documents\\IDEAProjects\\JuegoTriviaMultijugador\\src\\src\\main\\java\\Servidor\\preguntas.txt"))) {
+            String enunciado;
+            while ((enunciado = reader.readLine()) != null && !enunciado.trim().isEmpty()) {
+                List<String> opciones = new ArrayList<>();
+                // Leemos las 3 opciones
+                for (int i = 0; i < 3; i++) {
+                    String opcion = reader.readLine().trim();
+                    if (opcion != null && !opcion.isEmpty()) {
+                        opciones.add(opcion);
+                    } else {
+                        System.out.println("Error en el formato de la opción. Faltan opciones para la pregunta: " + enunciado);
+                        break;
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
-            }).start();
+
+                // Leemos la respuesta correcta
+                String respuestaCorrectaStr = reader.readLine().trim();
+                if (respuestaCorrectaStr != null && !respuestaCorrectaStr.isEmpty()) {
+                    try {
+                        int respuestaCorrecta = Integer.parseInt(respuestaCorrectaStr);
+                        if (respuestaCorrecta >= 1 && respuestaCorrecta <= 3) {
+                            preguntas.add(new Pregunta(enunciado, opciones, respuestaCorrecta));
+                        } else {
+                            System.out.println("Respuesta correcta fuera de rango (1-3) para la pregunta: " + enunciado);
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("Error al parsear la respuesta correcta: " + respuestaCorrectaStr);
+                    }
+                } else {
+                    System.out.println("Respuesta correcta no encontrada para la pregunta: " + enunciado);
+                }
+            }
+
+            System.out.println("Total de preguntas cargadas: " + preguntas.size());  // Verificación de las preguntas cargadas
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private void manejarConexiones() {
+        while (clientes.size() < jugadoresEsperados) {
+            try {
+                Socket clienteSocket = serverSocket.accept();
+                ManejadorCliente cliente = new ManejadorCliente(clienteSocket, this);
+                synchronized (this) {
+                    clientes.add(cliente);
+                    cliente.start();
+                    System.out.println("Cliente conectado: " + clienteSocket.getInetAddress() +
+                            ". Total: " + clientes.size() + "/" + jugadoresEsperados);
+                    cliente.enviarMensaje("¡Bienvenido! Esperando a los demás jugadores...");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
-        // Esperar hasta que todos los jugadores estén conectados y hayan ingresado su nombre
-        synchronized (this) {
-            while (clientes.size() < jugadoresEsperados || jugadoresConNombre < jugadoresEsperados) {
+        // Ahora que todos los jugadores se han conectado, esperamos a que todos ingresen su nombre
+        esperarNombres();
+
+        System.out.println("Todos los jugadores están conectados. Iniciando el juego...");
+        notificarATodos("¡Todos los jugadores están conectados! Preparando la primera pregunta...");
+        iniciarRonda();
+    }
+
+    private synchronized void esperarNombres() {
+        // Asegurarse de que el jugador ha ingresado su nombre
+        for (ManejadorCliente cliente : clientes) {
+            while (cliente.getJugador() == null || cliente.getJugador().getNombre() == null || cliente.getJugador().getNombre().isEmpty()) {
                 try {
-                    wait(); // Espera hasta que todos los jugadores hayan ingresado su nombre
+                    wait();  // Esperamos hasta que el jugador ingrese su nombre
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
         }
-
-        System.out.println("Todos los jugadores están conectados y han ingresado su nombre. Iniciando el juego...");
-        iniciarRonda(); // Mover esta línea aquí para que inicie después de la inscripción de todos
-    }
-
-    private void cargarPreguntas() {
-        preguntas.add(new Pregunta("¿Cuál es la capital de Francia?", Arrays.asList("Madrid", "París", "Londres"), 2));
-        preguntas.add(new Pregunta("¿Cuánto es 2+2?", Arrays.asList("3", "4", "5"), 2));
-        preguntas.add(new Pregunta("¿Qué color tiene el cielo?", Arrays.asList("Rojo", "Azul", "Verde"), 2));
-        preguntas.add(new Pregunta("¿Cuántos días tiene un año?", Arrays.asList("365", "364", "366"), 1));
-        preguntas.add(new Pregunta("¿Quién escribió 'El Quijote'?", Arrays.asList("Cervantes", "Shakespeare", "Borges"), 1));
     }
 
     public synchronized void iniciarRonda() {
-        while (rondaActual < preguntas.size() && bonusRespondidas < 5) {
-            boolean esBonus = (rondaActual + 1) % 5 == 0;
-            Pregunta pregunta = preguntas.get(random.nextInt(preguntas.size()));
-            int puntos = esBonus ? 20 : 10;
+        // Si hemos llegado al final de la lista de preguntas, termina el juego.
+        if (rondaActual < preguntas.size()) {
+            Pregunta pregunta = preguntas.get(rondaActual);
+            boolean esPreguntaBonus = (rondaActual % 6 == 5);  // Cada sexta pregunta es bonus
 
-            // Enviar pregunta a los clientes
-            clientes.forEach(cliente -> {
-                if (esBonus) {
-                    cliente.enviarMensaje("*** PREGUNTA BONUS: Esta pregunta vale 20 puntos ***");
+            // Notificar la nueva pregunta
+            notificarATodos("Nueva pregunta:");
+            notificarATodos("PREGUNTA: " + pregunta.getEnunciado());
+
+            // Enviar las opciones de respuesta
+            for (int i = 0; i < pregunta.getOpciones().size(); i++) {
+                notificarATodos((i + 1) + ". " + pregunta.getOpciones().get(i));
+            }
+
+            // Si es una pregunta bonus, se notifica.
+            if (esPreguntaBonus) {
+                notificarATodos("¡Esta es una pregunta bonus!");
+            }
+        } else {
+            // Si no hay más preguntas, finaliza el juego.
+            finalizarJuego();
+        }
+    }
+
+    public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion) {
+        Pregunta preguntaActual = preguntas.get(rondaActual);
+        boolean esPreguntaBonus = (rondaActual % 6 == 5);  // Verificar si es una pregunta bonus
+        boolean respuestaCorrecta = preguntaActual.esRespuestaCorrecta(opcion);
+
+        // Verificar si la respuesta es correcta
+        if (respuestaCorrecta) {
+            // Mensaje para notificar que el jugador acertó
+            String mensaje = "¡" + cliente.getJugador().getNombre() + " ha acertado!";
+            notificarATodos(mensaje);  // Notificar a todos los jugadores que alguien ha acertado
+
+            // Si es una pregunta bonus, incrementar los puntos extra
+            if (esPreguntaBonus) {
+                cliente.getJugador().sumarPuntos(20);  // Puntos extra por respuesta correcta en una pregunta bonus
+                contadorBonus.put(cliente, contadorBonus.getOrDefault(cliente, 0) + 1);
+
+                // Si el jugador ha respondido 5 preguntas bonus correctamente
+                if (contadorBonus.get(cliente) >= 5) {
+                    notificarATodos(cliente.getJugador().getNombre() + " ha respondido 5 preguntas bonus correctamente y ha ganado el juego.");
+                    finalizarJuego();  // Termina el juego cuando un jugador responde 5 preguntas bonus correctamente
+                    return;  // Detener el procesamiento
                 }
-                cliente.enviarPregunta(pregunta);
-            });
+            } else {
+                // Puntos normales por una respuesta correcta en una pregunta regular
+                cliente.getJugador().sumarPuntos(10);
+            }
 
-            // Esperar respuestas de los jugadores antes de continuar
-            esperarRespuestas(pregunta, puntos, esBonus);
-
+            // Incrementar la ronda actual
             rondaActual++;
-        }
 
-        if (bonusRespondidas >= 5) {
-            clientes.forEach(cliente -> cliente.enviarMensaje("El juego ha terminado. ¡Has respondido correctamente 5 preguntas bonus!"));
-            System.out.println("El juego ha terminado. ¡5 preguntas bonus respondidas correctamente!");
+            // Enviar la siguiente pregunta a todos los jugadores
+            iniciarRonda();
+        } else {
+            // Si la respuesta es incorrecta, solo al jugador que ha fallado
+            cliente.enviarMensaje("¡Respuesta incorrecta! Sigue intentando.");
         }
+    }
 
-        // Cerrar conexiones
+    private void finalizarJuego() {
+        notificarATodos("El juego ha terminado. Gracias por participar.");
+        notificarATodos("Resultados finales:");
+        for (ManejadorCliente cliente : clientes) {
+            notificarATodos(cliente.getJugador().getNombre() + ": " + cliente.getJugador().getPuntos() + " puntos");
+        }
         cerrarConexiones();
     }
 
-    private void esperarRespuestas(Pregunta pregunta, int puntos, boolean esBonus) {
-        synchronized (this) {
-            // Esperamos a que todos los jugadores respondan antes de procesar
-            int respuestasEsperadas = clientes.size();
-            int respuestasRecibidasCount = 0;
-
-            while (respuestasRecibidasCount < respuestasEsperadas) {
-                try {
-                    Thread.sleep(100); // Esperar un poco antes de verificar las respuestas
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            // Procesar todas las respuestas una vez que todos hayan respondido
-            ManejadorCliente ganador = null;
-            long mejorTiempo = Long.MAX_VALUE;
-
-            for (ManejadorCliente cliente : clientes) {
-                int opcion = respuestasRecibidas.get(cliente);
-                if (opcion == pregunta.getRespuestaCorrecta()) {
-                    cliente.getJugador().sumarPuntos(esBonus ? 20 : 10);
-                    cliente.enviarMensaje("¡Respuesta correcta! Has ganado " + (esBonus ? 20 : 10) + " puntos.");
-                    if (esBonus) {
-                        bonusRespondidas++;
-                    }
-                    if (ganador == null) {
-                        ganador = cliente;
-                        mejorTiempo = tiemposRespuestas.get(cliente);
-                    }
-                } else {
-                    cliente.enviarMensaje("Respuesta incorrecta.");
-                }
-            }
-
-            if (ganador != null) {
-                ganador.getJugador().sumarPuntos(puntos); // El ganador obtiene puntos
-                ganador.enviarMensaje("¡Has respondido primero! Ganaste " + puntos + " puntos.");
-            }
-
-            // Limpiar los mapas para la siguiente ronda
-            respuestasRecibidas.clear();
-            tiemposRespuestas.clear();
-        }
-    }
-
-    public synchronized void procesarRespuesta(ManejadorCliente cliente, int opcion, boolean esBonus) {
-        // Guardamos la respuesta y el tiempo en que fue dada
-        respuestasRecibidas.put(cliente, opcion);
-        tiemposRespuestas.put(cliente, System.currentTimeMillis());
-
-        // Verificar si todos los jugadores han respondido
-        if (respuestasRecibidas.size() == clientes.size()) {
-            notifyAll();  // Notificar que todas las respuestas han sido recibidas
-        }
-    }
-
-    public synchronized void nombreIngresado() {
-        jugadoresConNombre++;
-        if (jugadoresConNombre == jugadoresEsperados) {
-            notifyAll(); // Notificar que todos los jugadores han ingresado su nombre
-        }
-    }
-
     private void cerrarConexiones() {
-        clientes.forEach(cliente -> cliente.cerrarConexion());
+        for (ManejadorCliente cliente : clientes) {
+            cliente.cerrarConexion();
+        }
         try {
             serverSocket.close();
         } catch (IOException e) {
@@ -178,8 +195,14 @@ public class ServidorJuego {
         }
     }
 
+    synchronized void notificarATodos(String mensaje) {
+        for (ManejadorCliente cliente : clientes) {
+            cliente.enviarMensaje(mensaje);
+        }
+    }
+
     public static void main(String[] args) {
         ServidorJuego servidor = new ServidorJuego();
-        servidor.iniciarServidor(12345); // Puerto de conexión
+        servidor.iniciarServidor(55555);
     }
 }
