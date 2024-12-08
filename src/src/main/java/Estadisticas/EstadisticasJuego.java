@@ -4,9 +4,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EstadisticasJuego {
-    private Map<String, Integer> respuestasCorrectasPorJugador = new ConcurrentHashMap<>();
-    private Map<String, Integer> respuestasTotalesPorJugador = new ConcurrentHashMap<>();
-    private Map<String, Integer> puntuacionesPorEquipo = new ConcurrentHashMap<>();
+    public Map<String, Integer> respuestasCorrectasPorJugador = new ConcurrentHashMap<>();
+    public Map<String, Integer> respuestasTotalesPorJugador = new ConcurrentHashMap<>();
+    public Map<String, Integer> puntuacionesPorEquipo = new ConcurrentHashMap<>();
 
     public void registrarJugador(String jugador, String equipo) {
         respuestasCorrectasPorJugador.put(jugador, 0);

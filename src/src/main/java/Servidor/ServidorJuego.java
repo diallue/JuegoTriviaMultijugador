@@ -1,5 +1,8 @@
 package Servidor;
 
+import Estadisticas.EstadisticasJuego;
+import Interfaz.InterfazEstadisticas;
+
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -17,6 +20,8 @@ public class ServidorJuego {
     private Map<ManejadorCliente, Integer> fallosPorJugador = new HashMap<>();
     private Set<ManejadorCliente> jugadoresQueRespondieron = new HashSet<>();
     private Map<ManejadorCliente, Integer> preguntasBonusCorrectas = new HashMap<>();
+    private EstadisticasJuego estadisticasJuego = new EstadisticasJuego();
+    private final List<Socket> interfacesConectadas = new ArrayList<>();
 
     public void iniciarServidor(int puerto) {
         try {
@@ -27,6 +32,7 @@ public class ServidorJuego {
 
             poolDeHilos = Executors.newFixedThreadPool(jugadoresEsperados);
 
+            manejarConexionesInterfaces();
             manejarConexiones();
         } catch (IOException e) {
             e.printStackTrace();
@@ -95,6 +101,34 @@ public class ServidorJuego {
         iniciarRonda();
     }
 
+    private void manejarConexionesInterfaces() {
+        new Thread(() -> {
+            try (ServerSocket serverSocketInterfaces = new ServerSocket(55556)) { // Puerto dedicado para las interfaces gráficas
+                System.out.println("Esperando conexiones de interfaces gráficas en el puerto 55556...");
+                while (true) {
+                    Socket interfazSocket = serverSocketInterfaces.accept();
+                    synchronized (interfacesConectadas) {
+                        interfacesConectadas.add(interfazSocket);
+                    }
+                    System.out.println("Interfaz gráfica conectada desde: " + interfazSocket.getInetAddress());
+                    enviarEstadisticasIniciales(interfazSocket);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void enviarEstadisticasIniciales(Socket interfazSocket) {
+        try {
+            PrintWriter salida = new PrintWriter(interfazSocket.getOutputStream(), true);
+            String estadisticas = estadisticasJuego.generarEstadisticas();
+            salida.println(estadisticas);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private synchronized void esperarNombres() {
         for (ManejadorCliente cliente : clientes) {
             while (cliente.getJugador() == null || cliente.getJugador().getNombre() == null || cliente.getJugador().getNombre().isEmpty()) {
@@ -104,6 +138,7 @@ public class ServidorJuego {
                     e.printStackTrace();
                 }
             }
+            estadisticasJuego.registrarJugador(cliente.getJugador().getNombre(), "Equipo General");
         }
     }
 
@@ -148,6 +183,8 @@ public class ServidorJuego {
             notificarATodos(mensaje);
 
             cliente.getJugador().sumarPuntos(10); // Puntos por respuesta correcta
+            estadisticasJuego.actualizarEstadisticas(cliente.getJugador().getNombre(), "Equipo General", true, 10);
+            notificarEstadisticasActualizadas(); // Enviar actualización a las interfaces gráficas
 
             if (esPreguntaBonus) {
                 // Si es una pregunta bonus
@@ -176,6 +213,8 @@ public class ServidorJuego {
             // Si el jugador falló
             fallosPorJugador.put(cliente, fallosPorJugador.getOrDefault(cliente, 0) + 1);
             cliente.enviarMensaje("¡Respuesta incorrecta! Ya no puedes responder en esta ronda.");
+            estadisticasJuego.actualizarEstadisticas(cliente.getJugador().getNombre(), "Equipo General", false, 0);
+            notificarEstadisticasActualizadas(); // Enviar actualización a las interfaces gráficas
 
             // Si todos los jugadores han fallado
             if (fallosPorJugador.size() == clientes.size()) {
@@ -190,20 +229,47 @@ public class ServidorJuego {
         }
     }
 
-
     private void finalizarJuego() {
         notificarATodos("El juego ha terminado. Gracias por participar.");
         notificarATodos("Resultados finales:");
+
+        // Mostrar puntos de todos los jugadores
         for (ManejadorCliente cliente : clientes) {
             notificarATodos(cliente.getJugador().getNombre() + ": " + cliente.getJugador().getPuntos() + " puntos");
         }
+
+        // Generar estadísticas finales y mostrarlas
+        String estadisticasFinales = estadisticasJuego.generarEstadisticas();
+        notificarATodos("Estadísticas generales del juego: ");
+        notificarATodos(estadisticasFinales);
+
+        // Si es necesario enviar estas estadísticas a las interfaces gráficas
+        notificarEstadisticasActualizadas(); // Esto se encargará de actualizar las interfaces gráficas con los puntos finales.
+
+        // Cerrar conexiones después de que el juego haya terminado
         cerrarConexiones();
+    }
+
+    private void cerrarConexionesInterfaces() {
+        synchronized (interfacesConectadas) {
+            Iterator<Socket> iterador = interfacesConectadas.iterator();
+            while (iterador.hasNext()) {
+                Socket socket = iterador.next();
+                try {
+                    socket.close();
+                    iterador.remove(); // Eliminar después de cerrar
+                } catch (IOException e) {
+                    System.out.println("Error cerrando conexión con una interfaz gráfica.");
+                }
+            }
+        }
     }
 
     private void cerrarConexiones() {
         for (ManejadorCliente cliente : clientes) {
             cliente.cerrarConexion();
         }
+        cerrarConexionesInterfaces(); // Cerrar conexiones con interfaces gráficas
         try {
             serverSocket.close();
         } catch (IOException e) {
@@ -221,6 +287,25 @@ public class ServidorJuego {
         if (clientes.remove(cliente)) {
             String nombre = cliente.getJugador() != null ? cliente.getJugador().getNombre() : "un jugador desconocido";
             notificarATodos("¡" + nombre + " se ha desconectado del juego!");
+        }
+    }
+
+    private void notificarEstadisticasActualizadas() {
+        String estadisticas = estadisticasJuego.generarEstadisticas();
+        System.out.println("Enviando estadísticas a interfaces gráficas: " + estadisticas); // Añadir esta línea
+        synchronized (interfacesConectadas) {
+            Iterator<Socket> iterador = interfacesConectadas.iterator();
+            while (iterador.hasNext()) {
+                Socket socket = iterador.next();
+                try {
+                    PrintWriter salida = new PrintWriter(socket.getOutputStream(), true);
+                    salida.println(estadisticas);
+                    salida.flush();
+                } catch (IOException e) {
+                    System.out.println("Se perdió la conexión con una interfaz gráfica.");
+                    iterador.remove(); // Eliminar la interfaz desconectada
+                }
+            }
         }
     }
 
