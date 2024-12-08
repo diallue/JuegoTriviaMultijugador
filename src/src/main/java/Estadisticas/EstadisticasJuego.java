@@ -6,11 +6,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class EstadisticasJuego {
     public Map<String, Integer> respuestasCorrectasPorJugador = new ConcurrentHashMap<>();
     public Map<String, Integer> respuestasTotalesPorJugador = new ConcurrentHashMap<>();
+    public Map<String, Integer> puntuacionesPorJugador = new ConcurrentHashMap<>();
     public Map<String, Integer> puntuacionesPorEquipo = new ConcurrentHashMap<>();
 
     public void registrarJugador(String jugador, String equipo) {
         respuestasCorrectasPorJugador.put(jugador, 0);
         respuestasTotalesPorJugador.put(jugador, 0);
+        puntuacionesPorJugador.put(jugador, 0);
         puntuacionesPorEquipo.putIfAbsent(equipo, 0);
     }
 
@@ -19,7 +21,8 @@ public class EstadisticasJuego {
 
         if (acierto) {
             respuestasCorrectasPorJugador.put(jugador, respuestasCorrectasPorJugador.getOrDefault(jugador, 0) + 1);
-            puntuacionesPorEquipo.put(equipo, puntuacionesPorEquipo.get(equipo) + puntos);
+            puntuacionesPorJugador.put(jugador, puntuacionesPorJugador.getOrDefault(jugador, 0) + puntos);
+            puntuacionesPorEquipo.put(equipo, puntuacionesPorEquipo.getOrDefault(equipo, 0) + puntos);
         }
     }
 
@@ -29,12 +32,9 @@ public class EstadisticasJuego {
         builder.append("Puntuaciones por jugador:\n");
         respuestasCorrectasPorJugador.forEach((jugador, correctas) -> {
             int totales = respuestasTotalesPorJugador.get(jugador);
+            int puntos = puntuacionesPorJugador.getOrDefault(jugador, 0);
             builder.append(String.format("- %s: %d/%d respuestas correctas\n", jugador, correctas, totales));
-        });
-
-        builder.append("\nPuntuaciones por equipo:\n");
-        puntuacionesPorEquipo.forEach((equipo, puntos) -> {
-            builder.append(String.format("- Equipo %s: %d puntos\n", equipo, puntos));
+            builder.append(String.format("  Puntos acumulados: %d\n", puntos));
         });
 
         return builder.toString();
