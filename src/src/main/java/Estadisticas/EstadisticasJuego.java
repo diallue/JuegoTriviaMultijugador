@@ -33,8 +33,8 @@ public class EstadisticasJuego {
         respuestasCorrectasPorJugador.forEach((jugador, correctas) -> {
             int totales = respuestasTotalesPorJugador.get(jugador);
             int puntos = puntuacionesPorJugador.getOrDefault(jugador, 0);
-            builder.append(String.format("- %s: %d/%d respuestas correctas\n", jugador, correctas, totales));
-            builder.append(String.format("  Puntos acumulados: %d\n", puntos));
+            //builder.append(String.format("- %s: %d/%d respuestas correctas\n", jugador, correctas, totales));
+            //builder.append(String.format("  Puntos acumulados: %d\n", puntos));
         });
 
         return builder.toString();

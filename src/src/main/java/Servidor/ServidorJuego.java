@@ -95,27 +95,31 @@ public class ServidorJuego {
         esperarNombres();
         System.out.println("Todos los jugadores están conectados. Iniciando el juego...");
         notificarATodos("¡Todos los jugadores están conectados! Preparando la primera pregunta...");
+
+        System.out.println("Todos los jugadores están conectados. Enviando estadísticas iniciales...");
+        enviarEstadisticasIniciales(); // Nuevo método para enviar estadísticas iniciales
+
         iniciarRonda();
     }
 
-    private void enviarEstadisticasIniciales(Socket interfazSocket) {
-        try {
-            PrintWriter salida = new PrintWriter(interfazSocket.getOutputStream(), true);
+    private void enviarEstadisticasIniciales() {
+        // Generar estadísticas iniciales
+        String estadisticas = estadisticasJuego.generarEstadisticas();
 
-            // Generar estadísticas iniciales, incluyendo los jugadores conectados
-            String estadisticas = estadisticasJuego.generarEstadisticas();
-            System.out.println(estadisticas);  // Verificar el contenido
+        // Incluir información de los jugadores
+        StringBuilder estadisticasConJugadores = new StringBuilder(estadisticas);
+        for (ManejadorCliente cliente : clientes) {
+            String jugadorInfo = "Jugador: " + cliente.getJugador().getNombre() + " - Puntos: " + cliente.getJugador().getPuntos();
+            estadisticasConJugadores.append("\n").append(jugadorInfo);
+        }
 
-            // Incluir jugadores en las estadísticas
-            for (ManejadorCliente cliente : clientes) {
-                String jugadorInfo = "Jugador: " + cliente.getJugador().getNombre() + " - Puntos: " + cliente.getJugador().getPuntos();
-                estadisticas += "\n" + jugadorInfo;
-            }
+        // Mostrar estadísticas completas en consola
+        System.out.println("Estadísticas iniciales del juego:");
+        System.out.println(estadisticasConJugadores);
 
-            salida.println(estadisticas); // Enviar estadísticas con los jugadores
-            salida.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
+        // Enviar estadísticas a cada cliente
+        for (ManejadorCliente cliente : clientes) {
+            cliente.enviarMensaje(estadisticasConJugadores.toString());
         }
     }
 
@@ -259,15 +263,38 @@ public class ServidorJuego {
     }
 
     private void notificarEstadisticasActualizadas() {
+        // Generar estadísticas actualizadas
         String estadisticas = estadisticasJuego.generarEstadisticas();
-        System.out.println(estadisticas); // Verificación
 
-        // Incluir información de los jugadores en las estadísticas
+        // Número total de preguntas lanzadas
+        int totalPreguntasLanzadas = rondaActual + 1; // Suponiendo que rondaActual comienza desde 0
+
+        // Incluir información de los jugadores
+        StringBuilder estadisticasActualizadas = new StringBuilder(estadisticas);
         for (ManejadorCliente cliente : clientes) {
-            String jugadorInfo = "Jugador: " + cliente.getJugador().getNombre() + " - Puntos: " + cliente.getJugador().getPuntos();
-            estadisticas += "\n" + jugadorInfo;
+            String jugadorNombre = cliente.getJugador().getNombre();
+            int respuestasCorrectas = estadisticasJuego.respuestasCorrectasPorJugador.getOrDefault(jugadorNombre, 0);
+
+            String jugadorInfo = String.format(
+                    "Jugador: %s - Puntos: %d - Respuestas correctas: %d/%d",
+                    jugadorNombre,
+                    cliente.getJugador().getPuntos(),
+                    respuestasCorrectas,
+                    totalPreguntasLanzadas
+            );
+            estadisticasActualizadas.append("\n").append(jugadorInfo).append("\n");
         }
+
+        // Enviar estadísticas actualizadas a cada cliente
+        for (ManejadorCliente cliente : clientes) {
+            cliente.enviarMensaje(estadisticasActualizadas.toString());
+        }
+
+        // Opcional: imprimir estadísticas en la consola del servidor para verificar
+        System.out.println("Estadísticas actualizadas:");
+        System.out.println(estadisticasActualizadas);
     }
+
 
     public static void main(String[] args) {
         ServidorJuego servidor = new ServidorJuego();
