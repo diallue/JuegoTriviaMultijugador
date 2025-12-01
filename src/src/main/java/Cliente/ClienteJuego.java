@@ -1,29 +1,34 @@
 package Cliente;
 
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import java.io.*;
 import java.net.*;
 
 public class ClienteJuego {
-    private Socket socket;
+    private SSLSocket socket;
     private BufferedReader entrada;
     private PrintWriter salida;
 
     public void conectarAlServidor(String host, int puerto) {
         try {
             // Conectar al servidor
-            socket = new Socket(host, puerto);
+            System.setProperty("javax.net.ssl.trustStore", "keystore.p12");
+            System.setProperty("javax.net.ssl.trustStorePassword", "123456");
+
+            SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+
+            socket = (SSLSocket) sslSocketFactory.createSocket(host, puerto);
+            socket.startHandshake();
+
+            System.out.println("Conexión segura establecida con el servidor.");
+
             entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             salida = new PrintWriter(socket.getOutputStream(), true);
 
             // Iniciar un hilo para escuchar mensajes del servidor
             Thread escuchaServidor = new Thread(() -> escucharMensajes());
             escuchaServidor.start();
-
-            // Solicitar y enviar el nombre del jugador
-            BufferedReader teclado = new BufferedReader(new InputStreamReader(System.in));
-            System.out.print("Introduce tu nombre: ");
-            String nombre = teclado.readLine();
-            salida.println(nombre);
 
             // Enviar respuestas a preguntas
             responderPreguntas();
