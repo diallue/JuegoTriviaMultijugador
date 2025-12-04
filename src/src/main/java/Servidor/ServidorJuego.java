@@ -319,8 +319,7 @@ public class ServidorJuego {
                 int fallos = contFallos.incrementAndGet();
 
                 if (fallos >= clientes.size()) {
-                    notificarATodos("\n>>> NADIE ha acertado. La respuesta era: " +
-                            preguntaActual.getOpciones().get(preguntaActual.getRespuestaCorrecta() - 1));
+                    notificarATodos("\n>>> NADIE ha acertado. La respuesta era: " + preguntaActual.getOpciones().get(preguntaActual.getRespuestaCorrecta() - 1));
                     avanzarRonda();
                 }
             }

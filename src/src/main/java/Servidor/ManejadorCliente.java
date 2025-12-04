@@ -55,24 +55,32 @@ public class ManejadorCliente implements Runnable {
                 String respuestaStr = entrada.readLine();
                 if (respuestaStr == null) break;
 
-                try {
-                    // Convertir la respuesta a un entero
-                    int opcion = Integer.parseInt(respuestaStr.trim());
-                    // Procesar la respuesta
-                    CountDownLatch latchDeEstaRonda = servidor.getLatchRonda();
+                // --- NUEVA LÓGICA DE CHAT ---
+                if (respuestaStr.startsWith("CHAT:")) {
+                    // Extraemos el mensaje real (quitando "CHAT:")
+                    String textoMensaje = respuestaStr.substring(5);
+                    String nombreJugador = (jugador != null) ? jugador.getNombre() : "Anónimo";
 
-                    // 2. Procesar la respuesta
+                    // Enviamos a todos con una etiqueta especial [CHAT] para que la GUI sepa dónde ponerlo
+                    servidor.notificarATodos("[CHAT] " + nombreJugador + ": " + textoMensaje);
+                    continue; // Saltamos el resto del bucle para no procesarlo como respuesta de juego
+                }
+                // -----------------------------
+
+                try {
+                    // Convertir la respuesta a un entero (Lógica de juego original)
+                    int opcion = Integer.parseInt(respuestaStr.trim());
+
                     servidor.procesarRespuesta(this, opcion);
 
-                    // 3. Esperar en el latch que obtuvimos al principio
-                    if (latchDeEstaRonda != null) {
-                        latchDeEstaRonda.await();
+                    CountDownLatch latchActual = servidor.getLatchRonda();
+                    if (latchActual != null) {
+                        latchActual.await();
                     }
                 } catch (NumberFormatException e) {
-                    // Notificar al cliente si la entrada no es válida
-                    enviarMensaje("Por favor, introduce una opción válida (1, 2 o 3).");
+                    enviarMensaje("Por favor, introduce una opción válida (1-4).");
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    break;
                 }
             }
         } catch (IOException e) {
