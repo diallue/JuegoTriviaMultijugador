@@ -55,7 +55,7 @@ public class ManejadorCliente implements Runnable {
                 String respuestaStr = entrada.readLine();
                 if (respuestaStr == null) break;
 
-                // --- NUEVA LÓGICA DE CHAT ---
+                // --- LÓGICA DE CHAT ---
                 if (respuestaStr.startsWith("CHAT:")) {
                     // Extraemos el mensaje real (quitando "CHAT:")
                     String textoMensaje = respuestaStr.substring(5);
@@ -65,17 +65,15 @@ public class ManejadorCliente implements Runnable {
                     servidor.notificarATodos("[CHAT] " + nombreJugador + ": " + textoMensaje);
                     continue; // Saltamos el resto del bucle para no procesarlo como respuesta de juego
                 }
-                // -----------------------------
 
                 try {
-                    // Convertir la respuesta a un entero (Lógica de juego original)
                     int opcion = Integer.parseInt(respuestaStr.trim());
 
+                    CountDownLatch latchDeEstaRonda = servidor.getLatchRonda();
                     servidor.procesarRespuesta(this, opcion);
 
-                    CountDownLatch latchActual = servidor.getLatchRonda();
-                    if (latchActual != null) {
-                        latchActual.await();
+                    if (latchDeEstaRonda != null) {
+                        latchDeEstaRonda.await();
                     }
                 } catch (NumberFormatException e) {
                     enviarMensaje("Por favor, introduce una opción válida (1-4).");

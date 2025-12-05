@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import Estadisticas.EstadisticasJuego;
+import Persistencia.GestorRanking;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -34,6 +35,7 @@ public class ServidorJuego {
     private AtomicInteger contFallos = new AtomicInteger(0);
     private CyclicBarrier barreraTurno;
     private Runnable accionFinDeRonda;
+    private GestorRanking gestorRanking;
 
     public synchronized CyclicBarrier getBarreraTurno() {
         return barreraTurno;
@@ -46,8 +48,11 @@ public class ServidorJuego {
 
             SSLServerSocketFactory sslServerSocketFactory = (SSLServerSocketFactory) SSLServerSocketFactory.getDefault();
 
+            gestorRanking = new GestorRanking();
+
             serverSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(puerto);
-            cargarPreguntasDesdeAPI(); // Cargar preguntas desde la API
+            //cargarPreguntasDesdeAPI(); // Cargar preguntas desde la API
+            cargarPreguntasDesdeArchivo(); // Cargar preguntas desde el archivo preguntas.txt
             System.out.println("Servidor SEGURO (SSL/TLS) iniciado en el puerto " + puerto);
             configurarJuego();
 
@@ -87,10 +92,10 @@ public class ServidorJuego {
         }
     }
 
-    private void cargarPreguntasDesdeAPI() {
+    /*private void cargarPreguntasDesdeAPI() {
         try {
             OkHttpClient client = new OkHttpClient();
-            String url = "https://opentdb.com/api.php?amount=50&type=multiple&encode=urlLegacy";
+            String url = "https://opentdb.com/api.php?amount=50&type=multiple&encode=urlLegacy&lang=es";
             Request request = new Request.Builder().url(url).build();
 
             Response response = client.newCall(request).execute();
@@ -132,6 +137,55 @@ public class ServidorJuego {
         } catch (Exception e) {
             System.err.println("Error al cargar preguntas desde la API: " + e.getMessage());
             e.printStackTrace();
+        }
+    }*/
+
+    private void cargarPreguntasDesdeArchivo() {
+        preguntas.clear();
+        File archivo = new File("C:\\Users\\diego\\IdeaProjects\\JuegoTriviaMultijugador\\src\\src\\main\\java\\Servidor\\preguntas.txt");
+
+        if (!archivo.exists()) {
+            System.err.println("Error: No se encuentra el archivo preguntas.txt en la raíz del proyecto.");
+            return;
+        }
+
+        // Usamos FileReader envuelto en BufferedReader para leer línea a línea de forma eficiente
+        try (BufferedReader br = new BufferedReader(new FileReader(archivo))) {
+            String linea;
+            // Leemos la primera línea (enunciado) para empezar el bucle
+            while ((linea = br.readLine()) != null) {
+                // 1. Enunciado
+                String enunciado = linea.trim();
+                if (enunciado.isEmpty()) continue;
+
+                // 2. Leer las 3 Opciones
+                List<String> opciones = new ArrayList<>();
+                String op1 = br.readLine();
+                String op2 = br.readLine();
+                String op3 = br.readLine();
+
+                if (op1 == null || op2 == null || op3 == null) break;
+
+                opciones.add(op1);
+                opciones.add(op2);
+                opciones.add(op3);
+
+                // 3. Leer el índice de la Respuesta Correcta
+                String respStr = br.readLine();
+                if (respStr == null) break;
+
+                try {
+                    int correcta = Integer.parseInt(respStr.trim());
+                    // Creamos y guardamos la pregunta
+                    preguntas.add(new Pregunta(enunciado, opciones, correcta));
+                } catch (NumberFormatException e) {
+                    System.err.println("Error de formato en el archivo: se esperaba un número para la respuesta.");
+                }
+            }
+            System.out.println("Se cargaron " + preguntas.size() + " preguntas desde el fichero local.");
+
+        } catch (IOException e) {
+            System.err.println("Error de i/o al leer el archivo: " + e.getMessage());
         }
     }
 
@@ -340,13 +394,29 @@ public class ServidorJuego {
 
     private void finalizarJuego() {
         notificarATodos("El juego ha terminado. Gracias por participar.");
-        notificarATodos("Resultados finales:");
+
+        // 1. Mostrar resultados de la PARTIDA ACTUAL y GUARDAR en XML
+        notificarATodos("Resultados finales de esta sesión:");
+
         for (ManejadorCliente cliente : clientes) {
+            // Mostrar puntuación de la sesión
             notificarATodos(cliente.getJugador().getNombre() + ": " + cliente.getJugador().getPuntos() + " puntos");
+
+            // Guardamos la puntuación en el histórico si tiene puntos
+            if (cliente.getJugador() != null && cliente.getJugador().getPuntos() > 0) {
+                gestorRanking.registrarPuntuacion(cliente.getJugador().getNombre(), cliente.getJugador().getPuntos()
+                );
+            }
         }
-        String estadisticasFinales = estadisticasJuego.generarEstadisticas();
-        System.out.println("Estadísticas generales del juego: ");
-        System.out.println(estadisticasFinales);
+
+        // 2. Enviar el RANKING HISTÓRICO a los clientes
+        String textoHistorico = gestorRanking.getRankingTexto();
+
+        notificarATodos("\n=== Estadísticas Generales ===\n" + textoHistorico);
+
+        // 3. Logs del servidor
+        System.out.println("Estadísticas guardadas en ranking.xml");
+
         cerrarConexiones();
     }
 
