@@ -10,35 +10,27 @@ import java.awt.event.ActionListener;
 import java.io.*;
 
 public class ClienteGUI extends JFrame {
-
-    // --- Colores ---
     private static final Color COLOR_FONDO = new Color(30, 30, 30);
     private static final Color COLOR_PANEL = new Color(45, 45, 45);
     private static final Color COLOR_TEXTO = new Color(230, 230, 230);
     private static final Color COLOR_ACCENTO = new Color(0, 153, 204);
     private static final Color COLOR_ERROR = new Color(255, 85, 85);
     private static final Color COLOR_VERDE = new Color(40, 167, 69);
-    private static final Color COLOR_CHAT = new Color(255, 105, 180); // Rosa para el chat
+    private static final Color COLOR_CHAT = new Color(255, 105, 180);
     private static final Font FUENTE_PRINCIPAL = new Font("Consolas", Font.PLAIN, 14);
     private static final Font FUENTE_TITULO = new Font("Segoe UI", Font.BOLD, 14);
-
-    // --- Componentes ---
     private JTabbedPane tabbedPane;
-    private JTextPane panelJuego;   // Pestaña 0
-    private JTextPane panelStats;   // Pestaña 1
-    private JTextPane panelChat;    // Pestaña 2 (NUEVA)
-
+    private JTextPane panelJuego;
+    private JTextPane panelStats;
+    private JTextPane panelChat;
     private StyledDocument docJuego;
     private StyledDocument docStats;
     private StyledDocument docChat;
-
     private JTextField campoEntrada;
     private JButton botonEnviar;
     private JButton botonConectar;
     private JTextField txtHost;
     private JTextField txtPuerto;
-
-    // --- Red ---
     private SSLSocket socket;
     private PrintWriter salida;
     private BufferedReader entrada;
@@ -98,7 +90,7 @@ public class ClienteGUI extends JFrame {
         docStats = panelStats.getStyledDocument();
         tabbedPane.addTab("  Ranking  ", new JScrollPane(panelStats));
 
-        // Pestaña 3: CHAT (NUEVA)
+        // Pestaña 3: CHAT
         panelChat = crearTextPane();
         docChat = panelChat.getStyledDocument();
         tabbedPane.addTab("  Sala de Chat  ", new JScrollPane(panelChat));
@@ -208,7 +200,6 @@ public class ClienteGUI extends JFrame {
         }
     }
 
-    // --- EL CEREBRO DE LA INTERFAZ ---
     private void procesarMensajeServidor(String msg) {
         // 1. Mensajes de CHAT
         if (msg.startsWith("[CHAT]")) {
@@ -216,9 +207,9 @@ public class ClienteGUI extends JFrame {
             String contenido = msg.substring(7);
             agregarTexto(docChat, contenido + "\n", COLOR_CHAT);
 
-            // Si no estamos en la pestaña de chat, avisamos visualmente (opcional)
+            // Si no estamos en la pestaña de chat, avisamos visualmente
             if (tabbedPane.getSelectedIndex() != 2) {
-                tabbedPane.setBackgroundAt(2, Color.MAGENTA); // Iluminar pestaña
+                tabbedPane.setBackgroundAt(2, Color.MAGENTA);
             }
             return;
         }
@@ -264,7 +255,6 @@ public class ClienteGUI extends JFrame {
             salida.println("CHAT:" + texto);
             tabbedPane.setBackgroundAt(2, null);
         } else {
-            // ESTAMOS EN JUEGO (O RANKING) -> Se envía como respuesta normal
             salida.println(texto);
 
             // Feedback visual local en el chat de juego

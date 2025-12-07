@@ -49,7 +49,7 @@ public class GestorRanking {
     public void registrarPuntuacion(String nombre, int puntos) {
         String fecha = new SimpleDateFormat("dd/MM/yyyy").format(new Date());
         ranking.agregarPuntuacion(new Puntuacion(nombre, puntos, fecha));
-        guardarRanking(); // Guardar cambios inmediatamente
+        guardarRanking();
     }
 
     public String getRankingTexto() {

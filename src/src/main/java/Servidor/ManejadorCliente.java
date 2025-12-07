@@ -7,22 +7,25 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 public class ManejadorCliente implements Runnable {
-    private Socket clienteSocket;
-    private ServidorJuego servidor;
-    private Jugador jugador;
-    private BufferedReader entrada;
-    private PrintWriter salida;
-    private CountDownLatch latchInicio;
+    protected Socket clienteSocket;
+    protected ServidorJuego servidor;
+    protected Jugador jugador;
+    protected BufferedReader entrada;
+    protected PrintWriter salida;
+    protected CountDownLatch latchInicio;
 
     public ManejadorCliente(Socket socket, ServidorJuego servidor, CountDownLatch latch) {
         this.clienteSocket = socket;
         this.servidor = servidor;
         this.latchInicio = latch;
-        try {
-            entrada = new BufferedReader(new InputStreamReader(clienteSocket.getInputStream()));
-            salida = new PrintWriter(clienteSocket.getOutputStream(), true);
-        } catch (IOException e) {
-            e.printStackTrace();
+
+        if (socket != null) {
+            try {
+                entrada = new BufferedReader(new InputStreamReader(clienteSocket.getInputStream()));
+                salida = new PrintWriter(clienteSocket.getOutputStream(), true);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -41,7 +44,7 @@ public class ManejadorCliente implements Runnable {
             salida.println("BIENVENIDO! Introduce tu nombre:");
             String nombre = entrada.readLine();
             if (nombre == null) return;
-            jugador = new Jugador(nombre);  // Asignar el nombre al jugador
+            jugador = new Jugador(nombre);
 
             servidor.notificarATodos("¡" + nombre + " se ha unido al juego!");
 
@@ -57,13 +60,13 @@ public class ManejadorCliente implements Runnable {
 
                 // --- LÓGICA DE CHAT ---
                 if (respuestaStr.startsWith("CHAT:")) {
-                    // Extraemos el mensaje real (quitando "CHAT:")
+                    // Extraemos el mensaje real
                     String textoMensaje = respuestaStr.substring(5);
                     String nombreJugador = (jugador != null) ? jugador.getNombre() : "Anónimo";
 
                     // Enviamos a todos con una etiqueta especial [CHAT] para que la GUI sepa dónde ponerlo
                     servidor.notificarATodos("[CHAT] " + nombreJugador + ": " + textoMensaje);
-                    continue; // Saltamos el resto del bucle para no procesarlo como respuesta de juego
+                    continue;
                 }
 
                 try {
@@ -82,7 +85,6 @@ public class ManejadorCliente implements Runnable {
                 }
             }
         } catch (IOException e) {
-            // Manejar la desconexión del cliente
             System.out.println("El cliente " + (jugador != null ? jugador.getNombre() : "desconocido") + " se ha desconectado.");
             servidor.removerCliente(this); // Remover al cliente del servidor
         } finally {

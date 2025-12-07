@@ -4,18 +4,11 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import Estadisticas.EstadisticasJuego;
 import Persistencia.GestorRanking;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
 
@@ -33,12 +26,12 @@ public class ServidorJuego {
     private CountDownLatch latchInicio;
     private volatile CountDownLatch latchRonda;
     private AtomicInteger contFallos = new AtomicInteger(0);
-    private CyclicBarrier barreraTurno;
-    private Runnable accionFinDeRonda;
     private GestorRanking gestorRanking;
+    private boolean crearBot = false;
+    private volatile boolean juegoActivo = true;
 
-    public synchronized CyclicBarrier getBarreraTurno() {
-        return barreraTurno;
+    public boolean isJuegoActivo() {
+        return this.juegoActivo;
     }
 
     public void iniciarServidor(int puerto) {
@@ -56,16 +49,10 @@ public class ServidorJuego {
             System.out.println("Servidor SEGURO (SSL/TLS) iniciado en el puerto " + puerto);
             configurarJuego();
 
-            latchInicio = new CountDownLatch(jugadoresEsperados);
+            int humanosAEsperar = crearBot ? jugadoresEsperados - 1 : jugadoresEsperados;
+            latchInicio = new CountDownLatch(humanosAEsperar);
+
             latchRonda = new CountDownLatch(1);
-
-            accionFinDeRonda = () -> {
-                System.out.println("--- Todos han respondido. Fin de ronda ---");
-                procesarFinDeRonda();
-            };
-
-            // Creamos la barrera inicial
-            barreraTurno = new CyclicBarrier(jugadoresEsperados, accionFinDeRonda);
 
             poolDeHilos = Executors.newFixedThreadPool(jugadoresEsperados);
 
@@ -86,9 +73,18 @@ public class ServidorJuego {
 
     private void configurarJuego() {
         try (Scanner scanner = new Scanner(System.in)) {
-            System.out.println("¿Cuántos jugadores participarán? (Máximo 4)");
-            jugadoresEsperados = Math.min(4, scanner.nextInt());
-            System.out.println("Esperando la conexión de " + jugadoresEsperados + " jugadores...");
+            System.out.println("¿Cuántos jugadores HUMANOS participarán? (1-4)");
+            int input = scanner.nextInt();
+
+            if (input == 1) {
+                System.out.println("Modo 1 Jugador detectado. Se añadirá un BOT como oponente.");
+                jugadoresEsperados = 2; // 1 Humano + 1 Bot
+                crearBot = true;
+            } else {
+                jugadoresEsperados = Math.min(4, input);
+                crearBot = false;
+            }
+            System.out.println("Esperando conexión de " + (crearBot ? 1 : jugadoresEsperados) + " jugadores reales...");
         }
     }
 
@@ -170,7 +166,7 @@ public class ServidorJuego {
                 opciones.add(op2);
                 opciones.add(op3);
 
-                // 3. Leer el índice de la Respuesta Correcta
+                // 3. Leer el índice de la respuesta correcta
                 String respStr = br.readLine();
                 if (respStr == null) break;
 
@@ -190,7 +186,10 @@ public class ServidorJuego {
     }
 
     private void manejarConexiones() {
-        while (clientes.size() < jugadoresEsperados) {
+        // Si hay bot, el socket solo debe esperar (Total - 1) conexiones reales
+        int conexionesReales = crearBot ? jugadoresEsperados - 1 : jugadoresEsperados;
+
+        while (clientes.size() < conexionesReales) {
             try {
                 Socket clienteSocket = serverSocket.accept();
                 ManejadorCliente cliente = new ManejadorCliente(clienteSocket, this, latchInicio);
@@ -199,23 +198,24 @@ public class ServidorJuego {
                     poolDeHilos.execute(cliente);
                 }
                 System.out.println("Cliente conectado: " + clienteSocket.getInetAddress() + " Total: " + clientes.size() + "/" + jugadoresEsperados);
-            } catch (IOException e) {
-                e.printStackTrace();
+            } catch (IOException e) { e.printStackTrace(); }
+        }
+
+        if (crearBot) {
+            BotJugador bot = new BotJugador(this, latchInicio);
+            synchronized (this) {
+                clientes.add(bot);
+                poolDeHilos.execute(bot); // Ejecutamos el bot en un hilo del pool
             }
+            System.out.println("Bot añadido a la partida.");
         }
 
         try {
-            System.out.println("Esperando a que todos los jugadores envíen su nombre...");
-            // BLOQUEO: El servidor espera aquí hasta que el latch llegue a 0
             latchInicio.await();
-
-            System.out.println("¡Todos listos! Iniciando el juego...");
+            System.out.println("¡Todos listos! Iniciando...");
             enviarEstadisticasIniciales();
-            enviarPreguntaActual(); // Enviamos la primera pregunta
-
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+            enviarPreguntaActual();
+        } catch (InterruptedException e) { e.printStackTrace(); }
     }
 
     public synchronized void enviarPreguntaActual() {
@@ -245,38 +245,6 @@ public class ServidorJuego {
         }
     }
 
-    private void procesarFinDeRonda() {
-        // Aquí mostramos la respuesta correcta y actualizamos estadísticas GLOBALES si fuera necesario
-        Pregunta p = preguntas.get(rondaActual);
-        notificarATodos(">>> La respuesta correcta era: " + p.getOpciones().get(p.getRespuestaCorrecta() - 1));
-
-        // Actualizamos estadísticas
-        notificarEstadisticasActualizadas();
-
-        // Avanzamos ronda
-        rondaActual++;
-        if (rondaActual < preguntas.size()) {
-            enviarPreguntaActual(); // Lanzamos la siguiente pregunta a todos
-        } else {
-            finalizarJuego(); // O indicamos fin de juego
-        }
-    }
-
-    public void registrarRespuestaIndividual(ManejadorCliente cliente, int opcionElegida) {
-        Pregunta p = preguntas.get(rondaActual);
-        boolean acierto = p.esRespuestaCorrecta(opcionElegida);
-
-        if (acierto) {
-            cliente.enviarMensaje("¡CORRECTO!");
-            cliente.getJugador().sumarPuntos(10); // Lógica simple de puntos
-            estadisticasJuego.actualizarEstadisticas(cliente.getJugador().getNombre(), "General", true, 10);
-        } else {
-            cliente.enviarMensaje("INCORRECTO.");
-            estadisticasJuego.actualizarEstadisticas(cliente.getJugador().getNombre(), "General", false, 0);
-        }
-        cliente.enviarMensaje("Esperando al resto de jugadores...");
-    }
-
     private void enviarEstadisticasIniciales() {
         String estadisticas = estadisticasJuego.generarEstadisticas();
         StringBuilder estadisticasConJugadores = new StringBuilder(estadisticas);
@@ -288,40 +256,6 @@ public class ServidorJuego {
         System.out.println(estadisticasConJugadores);
         for (ManejadorCliente cliente : clientes) {
             cliente.enviarMensaje(estadisticasConJugadores.toString());
-        }
-    }
-
-    /*private synchronized void esperarNombres() {
-        for (ManejadorCliente cliente : clientes) {
-            while (cliente.getJugador() == null || cliente.getJugador().getNombre() == null || cliente.getJugador().getNombre().isEmpty()) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            estadisticasJuego.registrarJugador(cliente.getJugador().getNombre(), "Equipo General");
-        }
-    }*/
-
-    public synchronized void iniciarRonda() {
-        jugadoresQueRespondieron.clear();
-        fallosPorJugador.clear();
-
-        if (rondaActual < preguntas.size()) {
-            Pregunta pregunta = preguntas.get(rondaActual);
-            boolean esPreguntaBonus = ((rondaActual + 1) % 6 == 0);
-            if (esPreguntaBonus) {
-                notificarATodos("¡Esta es una pregunta BONUS! Los puntos valen doble.");
-            }
-
-            notificarATodos("Nueva pregunta:");
-            notificarATodos("PREGUNTA: " + pregunta.getEnunciado());
-            for (int i = 0; i < pregunta.getOpciones().size(); i++) {
-                notificarATodos((i + 1) + ". " + pregunta.getOpciones().get(i));
-            }
-        } else {
-            finalizarJuego();
         }
     }
 
@@ -389,10 +323,11 @@ public class ServidorJuego {
 
         // 3. Preparamos siguiente ronda
         rondaActual++;
-        enviarPreguntaActual(); // Esto crea un NUEVO latch para la siguiente
+        enviarPreguntaActual(); // Esto crea un nuevo latch para la siguiente
     }
 
     private void finalizarJuego() {
+        juegoActivo = false;
         notificarATodos("El juego ha terminado. Gracias por participar.");
 
         // 1. Mostrar resultados de la PARTIDA ACTUAL y GUARDAR en XML
@@ -432,6 +367,8 @@ public class ServidorJuego {
     }
 
     synchronized void notificarATodos(String mensaje) {
+        System.out.println(mensaje);
+
         for (ManejadorCliente cliente : clientes) {
             cliente.enviarMensaje(mensaje);
         }
@@ -442,11 +379,26 @@ public class ServidorJuego {
             String nombre = (cliente.getJugador() != null) ? cliente.getJugador().getNombre() : "Desconocido";
             notificarATodos("¡" + nombre + " abandonó la partida!");
 
+            boolean quedanHumanos = false;
+            for (ManejadorCliente c : clientes) {
+                // Si encontramos al menos uno que NO sea un Bot, el juego sigue
+                if (!(c instanceof BotJugador)) {
+                    quedanHumanos = true;
+                    break;
+                }
+            }
+
+            if (!quedanHumanos) {
+                System.out.println("No quedan jugadores humanos. Cerrando partida y desconectando al Bot.");
+                finalizarJuego(); // Esto cierra el pool de hilos y mata al Bot
+                return;
+            }
+
             if (clientes.isEmpty()) {
                 System.out.println("Todos se fueron. Cerrando.");
             } else {
                 if (latchRonda.getCount() > 0) { // Si la ronda sigue viva
-                    int fallosActuales = contFallos.get(); // Fallos de los que quedan + el que se fue (si falló)
+                    int fallosActuales = contFallos.get();
 
                     if (fallosActuales >= clientes.size()) {
                         notificarATodos("Todos los jugadores restantes han fallado o abandonado.");
@@ -466,10 +418,10 @@ public class ServidorJuego {
             int respuestasCorrectas = estadisticasJuego.respuestasCorrectasPorJugador.getOrDefault(jugadorNombre, Integer.valueOf(0));
             String jugadorInfo = String.format(
                     "Jugador: %s - Puntos: %d - Respuestas correctas: %d/%d",
-                    (Object) jugadorNombre,
-                    (Object) cliente.getJugador().getPuntos(),
-                    (Object) respuestasCorrectas,
-                    (Object) totalPreguntasLanzadas
+                    jugadorNombre,
+                    cliente.getJugador().getPuntos(),
+                    respuestasCorrectas,
+                    totalPreguntasLanzadas
             );
             estadisticasActualizadas.append("\n").append(jugadorInfo).append("\n");
         }

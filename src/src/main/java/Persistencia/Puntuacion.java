@@ -11,7 +11,7 @@ public class Puntuacion implements Serializable, Comparable<Puntuacion> {
     private int puntos;
     private String fecha;
 
-    public Puntuacion() {} // Constructor vacío obligatorio para JAXB
+    public Puntuacion() {}
 
     public Puntuacion(String nombre, int puntos, String fecha) {
         this.nombre = nombre;
@@ -27,11 +27,10 @@ public class Puntuacion implements Serializable, Comparable<Puntuacion> {
     public int getPuntos() { return puntos; }
     public void setPuntos(int puntos) { this.puntos = puntos; }
 
-    @XmlAttribute // Guardamos la fecha como atributo del tag XML
+    @XmlAttribute
     public String getFecha() { return fecha; }
     public void setFecha(String fecha) { this.fecha = fecha; }
 
-    // Para ordenar de mayor a menor puntuación
     @Override
     public int compareTo(Puntuacion o) {
         return Integer.compare(o.puntos, this.puntos);

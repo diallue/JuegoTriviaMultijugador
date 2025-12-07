@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <ranking_historico>
     <top_scores>
+        <jugador fecha="07/12/2025">
+            <nombre>Juan</nombre>
+            <puntos>270</puntos>
+        </jugador>
+        <jugador fecha="07/12/2025">
+            <nombre>Bot-Player</nombre>
+            <puntos>260</puntos>
+        </jugador>
+        <jugador fecha="07/12/2025">
+            <nombre>Bot-Player</nombre>
+            <puntos>260</puntos>
+        </jugador>
         <jugador fecha="05/12/2025">
             <nombre>Juan</nombre>
             <puntos>230</puntos>
+        </jugador>
+        <jugador fecha="07/12/2025">
+            <nombre>Bot-Player</nombre>
+            <puntos>190</puntos>
         </jugador>
         <jugador fecha="05/12/2025">
             <nombre>Pepe</nombre>

@@ -12,8 +12,6 @@ public class RankingHistorico {
 
     private List<Puntuacion> listaPuntuaciones = new ArrayList<>();
 
-    // Envolvemos la lista en una etiqueta <lista> para que el XML quede limpio
-    // [cite: 1283]
     @XmlElementWrapper(name = "top_scores")
     @XmlElement(name = "jugador")
     public List<Puntuacion> getListaPuntuaciones() {
