@@ -3,7 +3,6 @@ package Cliente;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import java.io.*;
-import java.net.*;
 
 public class ClienteJuego {
     private SSLSocket socket;
@@ -13,7 +12,7 @@ public class ClienteJuego {
     public void conectarAlServidor(String host, int puerto) {
         try {
             // Conectar al servidor
-            System.setProperty("javax.net.ssl.trustStore", "keystore.p12");
+            System.setProperty("javax.net.ssl.trustStore", "ksrc/main/resources/keystore.p12");
             System.setProperty("javax.net.ssl.trustStorePassword", "123456");
 
             SSLSocketFactory sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();

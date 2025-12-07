@@ -36,7 +36,7 @@ public class ServidorJuego {
 
     public void iniciarServidor(int puerto) {
         try {
-            System.setProperty("javax.net.ssl.keyStore", "keystore.p12");
+            System.setProperty("javax.net.ssl.keyStore", "src/main/resources/keystore.p12");
             System.setProperty("javax.net.ssl.keyStorePassword", "123456");
 
             SSLServerSocketFactory sslServerSocketFactory = (SSLServerSocketFactory) SSLServerSocketFactory.getDefault();
@@ -138,7 +138,7 @@ public class ServidorJuego {
 
     private void cargarPreguntasDesdeArchivo() {
         preguntas.clear();
-        File archivo = new File("C:\\Users\\diego\\IdeaProjects\\JuegoTriviaMultijugador\\src\\src\\main\\java\\Servidor\\preguntas.txt");
+        File archivo = new File("C:\\Users\\diego\\IdeaProjects\\JuegoTriviaMultijugador\\src\\main\\java\\Servidor\\preguntas.txt");
 
         if (!archivo.exists()) {
             System.err.println("Error: No se encuentra el archivo preguntas.txt en la raíz del proyecto.");

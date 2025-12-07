@@ -8,7 +8,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class GestorRanking {
-    private static final String FILE_NAME = "ranking.xml";
+    private static final String FILE_NAME = "src/main/resorces/ranking.xml";
     private RankingHistorico ranking;
 
     public GestorRanking() {
