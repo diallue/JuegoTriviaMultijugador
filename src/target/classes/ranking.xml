@@ -25,5 +25,9 @@
             <nombre>Pepe</nombre>
             <puntos>40</puntos>
         </jugador>
+        <jugador fecha="11/12/2025">
+            <nombre>Bot-Player</nombre>
+            <puntos>10</puntos>
+        </jugador>
     </top_scores>
 </ranking_historico>
